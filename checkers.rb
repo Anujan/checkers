@@ -18,6 +18,7 @@ class Piece
   end
 
   def diagonals
+    #REV: elegant one-liner.. nice
     self.kinged? ? DIAGS[:black].concat(DIAGS[:white]) : DIAGS[color]
   end
 
@@ -46,6 +47,7 @@ class Piece
   end
 
   def moves
+    #REV: so this is the strict version where you have to jump if you can?
     jumps = jump_moves
     jumps.empty? ? slide_moves : jump_moves
   end
@@ -125,12 +127,15 @@ class Board
   end
 
   def all_pieces(&prc)
+    #REV: elegant versatile method!
     prc = Proc.new { true } unless
     prc.nil?
     pieces.flatten.compact.select(&prc)
   end
 
   def perform_moves(sequence, color)
+    #REV: did you make sure to not allow a player to slide after jumping?
+    #REV: if so it's unclear to me
     result = valid_move_seq?(sequence, color)
     unless result[:success]
       raise InvalidMoveError, result[:message]
