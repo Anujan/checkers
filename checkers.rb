@@ -51,16 +51,13 @@ class Piece
   end
 
   def pos=(value)
+    @board.remove_piece(self.pos)
     @pos = value
     @board.add_piece(self)
   end
 
   def symbol
-    if (self.color == :white)
-      self.kinged? ? "o" : "o"
-    else
-      self.kinged? ? "o" : "o"
-    end
+    self.kinged? ? "\u263A" : "\u25CB"
   end
 end
 
@@ -70,7 +67,7 @@ end
 class Board
   attr_accessor :pieces
   def initialize(pieces=nil)
-    if (pieces.nil?)
+    if pieces.nil?
       @pieces = Array.new(8) { Array.new(8) }
       build_board
     else
@@ -90,35 +87,31 @@ class Board
     pieces[pos[0]][pos[1]]
   end
 
-  def display
+  def render
     colored = true
+    render = ""
     pieces.each do |row|
       row.each do |piece|
         symbol = (piece.nil? ? " " : " #{piece.symbol} ").rjust(3)
         bg = colored ? :default : :green
         color =   piece.nil? ? :default : piece.color
-        print symbol.colorize(background: bg, color: color)
+        render += symbol.colorize(background: bg, color: color)
         colored = !colored
       end
       colored = !colored
-      puts
+      render += "\n"
     end
-    nil
+    render
   end
 
   def off_the_grid?(pos)
-    pos[0] < 0 || pos[0] > 7 || pos[1] < 0 || pos[1] > 7
-  end
-
-  def dup
-    new_pieces = pieces.deep_dup
-    new_board = Board.new(new_pieces)
+    pos.each { |z| return true unless (0..7).include?(z)}
+    false
   end
 
   def perform_slide(piece, end_pos)
     raise InvalidMoveError, "That piece can't move there" unless piece.slide_moves.include?(end_pos)
     piece.pos = end_pos
-    true
   end
 
   def perform_jump(piece, end_pos)
@@ -129,32 +122,65 @@ class Board
     raise InvalidMoveError, "No piece to jump at #{piece_between}"
     remove_piece(piece_between)
     piece.pos = end_pos
-    true
   end
 
   def jumper_pieces(color)
-    pieces.flatten.compact.select { |piece| !piece.jump_moves.empty? }
+    all_pieces.select { |piece| !piece.jump_moves.empty? }
   end
 
-  def perform_moves!(sequence)
+  def all_pieces
+    pieces.flatten.compact
+  end
+
+  def perform_moves!(sequence, color)
     start_pos = sequence.shift
     piece = self[start_pos]
     raise InvalidMoveError, "No piece at #{start_pos}" if piece.nil?
-    if (sequence.size > 1 || (sequence.first.first - piece.pos.first) > 1)
+    raise InvalidMoveError, "You can only move your own pieces" if piece.color != color
+    if (sequence.size > 1 && (sequence.first.first - piece.pos.first) > 1)
       raise InvalidMoveError, "This piece can't jump there..." unless piece.jump_moves.include?(sequence.first)
       until sequence.empty?
         perform_jump(piece, sequence.shift)
       end
       raise InvalidMoveError, "Jumping is mandatory if you're able to" unless piece.jump_moves.empty?
     else
-      raise InvalidMoveError, "You have a piece that's able to jump, so you have to jump." unless jumper_pieces.empty?
+      raise InvalidMoveError, "You have a piece that's able to jump, so you have to jump." unless jumper_pieces(color).empty?
       perform_slide(piece, sequence.first)
     end
+  end
+
+  def valid_move_seq?(sequence, color)
+    begin
+      new_board = self.dup
+      new_board.perform_moves!(sequence.deep_dup, color)
+    rescue InvalidMoveError => e
+      {success: false, message: e.message}
+    else
+      {success: true}
+    end
+  end
+
+  def perform_moves(sequence, color)
+    result = valid_move_seq?(sequence, color)
+    unless result[:success]
+      raise InvalidMoveError, result[:message]
+    end
+    self.perform_moves!(sequence, color)
   end
 
   protected
     def []=(pos, val)
       pieces[pos[0]][pos[1]] = val
+    end
+
+    def dup
+      new_pieces = Array.new(8) { Array.new(8) }
+      new_board = Board.new(new_pieces)
+      self.pieces.flatten.compact.each do |piece|
+        new_board.add_piece(Piece.new(piece.pos, piece.color, new_board, piece.kinged?))
+      end
+
+      new_board
     end
 
     def build_board
@@ -163,7 +189,7 @@ class Board
         8.times do |col|
           color = row < 3 ? :black : :white
           add = (color == :black && row.even? != col.odd?) || (color == :white && row.odd? == col.even?)
-          add_piece(Piece.new([row, col], color, self))
+          add_piece(Piece.new([row, col], color, self)) if add
         end
       end
     end
@@ -171,9 +197,72 @@ end
 
 class Array
   def deep_dup
-    self.map { |el| el.is_a?(Array) ? el.deep_dup : el.dup }
+    self.map { |el| el.is_a?(Array) ? el.deep_dup : (el.nil? ? nil : el) }
+  end
+end
+
+class HumanPlayer
+  def initialize(color)
+    @color = color
+  end
+
+  def play_turn(board)
+    puts "#{@color.to_s.capitalize} turn!"
+    puts board.render
+    puts "Type a sequence of coordinates you would like to move to (Ex: 2,0 3,1)"
+    coordinates = gets.chomp.split
+    coordinates.map { |coord| parse_coordinates(coord.split(",")) }
+  end
+
+  def parse_coordinates(str)
+    str.map { |s| Integer(s) }
   end
 end
 
 class Game
+  def initialize
+    @players = {
+      :white => HumanPlayer.new(:white),
+      :black => HumanPlayer.new(:black)
+    }
+    @board = Board.new
+  end
+
+  def play
+    turn = :black
+    until over?
+      begin
+        sequence = @players[turn].play_turn(@board)
+        @board.perform_moves(sequence, turn)
+      rescue StandardError => e
+        puts e.message.bold
+        retry
+      end
+      turn = turn == :black ? :white : :black
+    end
+
+    if (won?)
+      puts "#{won?.to_s.upcase} WINS"
+    else
+      puts "IT'S A DRAW"
+    end
+  end
+
+  def draw?
+    @board.all_pieces.all? { |piece| piece.moves.empty? }
+  end
+
+  def over?
+    draw? || won?
+  end
+
+  def won?
+    colors = @players.keys
+    colors.each do |color|
+      won = @board.all_pieces.select { |pc| pc.color == :white }
+        .all? { |piece| piece.moves.empty? }
+      return color if won
+    end
+    false
+  end
 end
