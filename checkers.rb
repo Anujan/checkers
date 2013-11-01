@@ -1,4 +1,8 @@
+# encoding: UTF-8
+# REV: If you use the above line you can copy/paste the Unicode symbol directly
+# REV: instead of having to use the number code
 require "colorize"
+# REV: Put Piece, Board, Game, and Player classes in separate files
 class Piece
   attr_accessor :pos, :color, :king, :board
   DIAGS = {
@@ -38,7 +42,10 @@ class Piece
     end
     self.diagonals.each_with_index do |diag, idx|
       diag_pos = diag.map.with_index { |el, i| pos[i] + el }
-      next if self.board.off_the_grid?(jump_diags[idx]) || self.board[diag_pos].nil? || !self.board[jump_diags[idx]].nil? || self.board[diag_pos].color == self.color
+      # REV: You can break up long conditions by moving code after the operator || on a new line
+      # REV: alternatively you can use the ||= or &&= operators
+      next if self.board.off_the_grid?(jump_diags[idx]) || self.board[diag_pos].nil? ||
+              !self.board[jump_diags[idx]].nil? || self.board[diag_pos].color == self.color
       moves << jump_diags[idx]
     end
 
@@ -62,6 +69,7 @@ class Piece
   end
 
   def symbol
+    # REV: Copy/paste the symbol directly by adding (# encoding: UTF-8) to the top of the file 
     if (color == :white)
       self.kinged? ? "\u263A" : "\u25CB"
     else
@@ -72,6 +80,8 @@ end
 
 class InvalidMoveError < StandardError
 end
+
+# REV: put in separate file
 
 class Board
   attr_accessor :pieces
@@ -229,6 +239,7 @@ class Array
   end
 end
 
+# REV: put in separate file (maybe)
 class HumanPlayer
   def initialize(color)
     @color = color
@@ -247,6 +258,7 @@ class HumanPlayer
   end
 end
 
+# REV: put in separate file
 class Game
   def initialize
     @players = {
